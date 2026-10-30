@@ -24,7 +24,21 @@ log_step "Installing Wine + winetricks"
 # wine-stable lives in the official Homebrew Cask repo, so no extra tap is
 # strictly required. We keep this block explicit so the script documents
 # the trust boundary.
-if ! brew_arm64 list --cask | grep -q "^${WINE_CASK}$"; then
+if [[ -d "$WINE_APP" ]]; then
+    log_ok "Wine already present at $WINE_APP"
+elif brew_arm64 info --cask "$WINE_CASK" 2>/dev/null | grep -q "Disabled"; then
+    # Homebrew disabled the cask on 2026-09-01. Fall back to the same Gcenx
+    # build, unpacked into ~/Applications (no sudo, no Gatekeeper prompt).
+    log_warn "Cask ${WINE_CASK} is disabled in Homebrew; downloading the Gcenx build instead"
+    WINE_APP="$HOME/Applications/Wine Stable.app"
+    WINE_BIN="$WINE_APP/Contents/Resources/wine/bin/wine"
+    _tmp=$(mktemp -d)
+    curl -fL --retry 3 -o "$_tmp/wine.tar.xz" "$WINE_APP_TARBALL_URL"
+    tar -xJf "$_tmp/wine.tar.xz" -C "$_tmp"
+    mkdir -p "$HOME/Applications"
+    mv "$_tmp/Wine Stable.app" "$WINE_APP"
+    rm -rf "$_tmp"
+elif ! brew_arm64 list --cask | grep -q "^${WINE_CASK}$"; then
     log_info "Installing cask ${WINE_CASK}"
     # gstreamer-runtime (pulled in as a dependency) invokes the system
     # installer and will prompt for sudo in the interactive terminal.

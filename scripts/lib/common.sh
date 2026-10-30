@@ -63,7 +63,16 @@ die() {
 export HOMEBREW_PREFIX
 export PATH="$HOMEBREW_PREFIX/bin:$PATH"
 
-: "${WINE_APP:=/Applications/Wine Stable.app}"
+: "${WINE_APP_TARBALL_URL:=https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.0_1/wine-stable-11.0_1-osx64.tar.xz}"
+# Homebrew disabled the wine-stable cask on 2026-09-01 (Gatekeeper check), so
+# Wine may also live in ~/Applications, installed from the Gcenx tarball.
+if [[ -z "${WINE_APP:-}" ]]; then
+    if [[ ! -d "/Applications/Wine Stable.app" && -d "$HOME/Applications/Wine Stable.app" ]]; then
+        WINE_APP="$HOME/Applications/Wine Stable.app"
+    else
+        WINE_APP="/Applications/Wine Stable.app"
+    fi
+fi
 : "${WINE_BIN:=$WINE_APP/Contents/Resources/wine/bin/wine}"
 : "${WINESERVER_BIN:=$WINE_APP/Contents/Resources/wine/bin/wineserver}"
 : "${WINEPREFIX:=$HOME/.wine-steam}"
