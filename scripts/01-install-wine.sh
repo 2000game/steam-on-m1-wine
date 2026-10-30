@@ -53,6 +53,15 @@ if (( _use_tarball )); then
     _tmp=$(mktemp -d)
     curl -fL --retry 3 -o "$_tmp/wine.tar.xz" "$WINE_APP_TARBALL_URL" \
         || die "Download failed: $WINE_APP_TARBALL_URL"
+    if [[ -n "$WINE_APP_TARBALL_SHA256" ]]; then
+        actual=$(shasum -a 256 "$_tmp/wine.tar.xz" | awk '{print $1}')
+        if [[ "$actual" != "$WINE_APP_TARBALL_SHA256" ]]; then
+            die "Checksum mismatch for $WINE_APP_TARBALL_URL (expected $WINE_APP_TARBALL_SHA256, got $actual)"
+        fi
+        log_ok "SHA256 verified"
+    else
+        log_warn "WINE_APP_TARBALL_SHA256 is empty — skipping checksum check."
+    fi
     tar -xJf "$_tmp/wine.tar.xz" -C "$_tmp"
     mkdir -p "$HOME/Applications"
     rm -rf "$WINE_APP"

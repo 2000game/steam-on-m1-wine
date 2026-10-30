@@ -67,6 +67,10 @@ export PATH="$HOMEBREW_PREFIX/bin:$PATH"
 # each, so stay below the core count on 16-24 GB machines.
 : "${BUILD_JOBS:=6}"
 : "${WINE_APP_TARBALL_URL:=https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.0_1/wine-stable-11.0_1-osx64.tar.xz}"
+# SHA256 of the tarball, taken from the asset digest GitHub shows for the
+# Gcenx 11.0_1 release (gh api repos/Gcenx/macOS_Wine_builds/releases/tags/11.0_1).
+# If you override the URL, override this too (empty skips the check).
+: "${WINE_APP_TARBALL_SHA256:=b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388}"
 # Homebrew disabled the wine-stable cask on 2026-09-01 (Gatekeeper check), so
 # Wine may also live in ~/Applications, installed from the Gcenx tarball.
 if [[ -z "${WINE_APP:-}" ]]; then
