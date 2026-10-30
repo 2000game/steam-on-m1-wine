@@ -24,27 +24,40 @@ log_step "Installing Wine + winetricks"
 # wine-stable lives in the official Homebrew Cask repo, so no extra tap is
 # strictly required. We keep this block explicit so the script documents
 # the trust boundary.
+_use_tarball=0
 if [[ -d "$WINE_APP" ]]; then
     log_ok "Wine already present at $WINE_APP"
 elif brew_arm64 info --cask "$WINE_CASK" 2>/dev/null | grep -q "Disabled"; then
-    # Homebrew disabled the cask on 2026-09-01. Fall back to the same Gcenx
-    # build, unpacked into ~/Applications (no sudo, no Gatekeeper prompt).
-    log_warn "Cask ${WINE_CASK} is disabled in Homebrew; downloading the Gcenx build instead"
-    WINE_APP="$HOME/Applications/Wine Stable.app"
-    WINE_BIN="$WINE_APP/Contents/Resources/wine/bin/wine"
-    _tmp=$(mktemp -d)
-    curl -fL --retry 3 -o "$_tmp/wine.tar.xz" "$WINE_APP_TARBALL_URL"
-    tar -xJf "$_tmp/wine.tar.xz" -C "$_tmp"
-    mkdir -p "$HOME/Applications"
-    mv "$_tmp/Wine Stable.app" "$WINE_APP"
-    rm -rf "$_tmp"
+    # Homebrew disabled the cask on 2026-09-01.
+    log_warn "Cask ${WINE_CASK} is disabled in Homebrew"
+    _use_tarball=1
 elif ! brew_arm64 list --cask | grep -q "^${WINE_CASK}$"; then
     log_info "Installing cask ${WINE_CASK}"
     # gstreamer-runtime (pulled in as a dependency) invokes the system
     # installer and will prompt for sudo in the interactive terminal.
-    brew_arm64 install --cask "$WINE_CASK"
+    # `if !` keeps a failed install from aborting the script under set -e.
+    if ! brew_arm64 install --cask "$WINE_CASK"; then
+        log_warn "brew install --cask ${WINE_CASK} failed"
+        _use_tarball=1
+    fi
 else
     log_ok "Cask ${WINE_CASK} already installed"
+fi
+
+if (( _use_tarball )); then
+    # Fall back to the same Gcenx build, unpacked into ~/Applications
+    # (no sudo, no Gatekeeper prompt).
+    log_info "Downloading the Gcenx build instead"
+    WINE_APP="$HOME/Applications/Wine Stable.app"
+    WINE_BIN="$WINE_APP/Contents/Resources/wine/bin/wine"
+    _tmp=$(mktemp -d)
+    curl -fL --retry 3 -o "$_tmp/wine.tar.xz" "$WINE_APP_TARBALL_URL" \
+        || die "Download failed: $WINE_APP_TARBALL_URL"
+    tar -xJf "$_tmp/wine.tar.xz" -C "$_tmp"
+    mkdir -p "$HOME/Applications"
+    rm -rf "$WINE_APP"
+    mv "$_tmp/Wine Stable.app" "$WINE_APP"
+    rm -rf "$_tmp"
 fi
 
 # -- winetricks ---------------------------------------------------------------
