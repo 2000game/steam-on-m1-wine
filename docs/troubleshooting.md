@@ -333,3 +333,26 @@ ls -la "$HOME/.wine-steam/drive_c/Program Files (x86)/Steam/bin/cef/"cef.win*"/w
 (Exact plumbing of the env var through Steam's child processes depends
 on Wine's environment handling. Expect to tweak `launch-steam.sh` if
 you need this.)
+
+## Install fails on newer toolchains (macOS 26, Xcode 27, Homebrew 2026, GCC 16)
+
+Tested on Apple Silicon with macOS 26, Xcode 27, Homebrew 7 and mingw-w64
+GCC 16. The installer handles the build errors below automatically; they are
+listed so the error messages are searchable. The last two rows are runtime
+symptoms and not (fully) fixed.
+
+| Symptom | Cause | Handling |
+|---|---|---|
+| `brew install --cask wine-stable` fails / cask disabled | Homebrew disabled the cask (Gatekeeper) on 2026-09-01 | `01-install-wine.sh` falls back to the Gcenx 11.0_1 tarball in `~/Applications` (SHA256-verified) when the cask is disabled or its install fails |
+| `KeyError: ... build.cpp_importstd` / `nonexistant project parent option build.cpp_importstd` during `meson setup` | Bug in meson 1.10.0/1.10.1; 1.11+ is incompatible with DXMT's `meson.build` | `07` uses the system meson only if it is 1.10.2+ within 1.10.x, otherwise pins `meson==1.10.2` in a venv (`MESON_VENV`). A half-finished `build/` is redone |
+| `pip install --user meson` fails with `externally-managed-environment` | Homebrew Python is PEP 668 managed | Same venv pin, no `--user` install |
+| `winebuild not found at .../toolchains/wine/bin/winebuild` | The 3Shain toolchain tarball has no top-level directory and spilled into `toolchains/` | `07` extracts into a scratch dir and moves that into place. Delete a broken `toolchains/` and re-run |
+| `Undefined symbols ... _ZSTD_compress` linking `airconv` / `winemetal.so` | LLVM's cmake picked up Homebrew's arm64-only zstd | `07` builds LLVM with `-DLLVM_ENABLE_ZSTD=OFF` (delete `toolchains/llvm` to rebuild) |
+| `'setfill' is not a member of 'std'` in `com_guid.cpp` | GCC 16 no longer includes `<iomanip>` transitively | `patches/dxmt/*.patch` adds the include; `07` applies it unless already applied |
+| Metal compile error in `air_tessellation.metal` (`__metal_atomic_fetch_add_explicit` signature) | The Xcode 27 Metal compiler changed the internal builtin | Same `patches/dxmt` patch uses `atomic_fetch_add_explicit` instead |
+| `redefinition of '_OSSwapInt16'` in `tools/makedep.c` | Xcode clang targets arm64 even under `arch -x86_64` | `08` passes `-arch x86_64` explicitly to the Wine configure compilers |
+| `Your bison version is too old` during Wine configure | macOS ships bison 2.3; Homebrew's bison/flex are keg-only and not on `PATH` | `08` puts the keg-only `bison`/`flex` `bin` directories on `PATH` |
+| `FreeType 64-bit development files not found` | Homebrew's freetype is arm64 and cannot link into the x86_64 Wine build | `08` configures Wine with `--without-freetype` |
+| `06-install-wrapper.sh` can't find `bin/cef` on a fresh install | `SteamSetup` only installs the bootstrapper; CEF arrives on first launch | `06` now warns and exits 0; `launch-steam.sh` redeploys the wrapper on every launch |
+| DXMT log: `Failed to create metal view ... no exported symbols` | The patched `winemac.drv` from step 08 is not installed, so the window has no visible Metal view | Run `bash scripts/08-patch-wine-visibility.sh` (or the full `install.sh`) |
+| 32-bit game crashes under WoW64 with `Exception frame is not in stack limits` | Known Wine WoW64 limitation with 32-bit processes | Not fixed; use a 64-bit build of the game if it offers one |
