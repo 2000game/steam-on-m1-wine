@@ -10,7 +10,7 @@
 # -------------------------------------------------
 # 1. Installs missing Homebrew packages (meson, ninja, bison, flex,
 #    cmake, gettext, mingw-w64, wget).
-# 2. Pins meson to 1.10.x via pip if the system meson is 1.11+.
+# 2. Pins meson to 1.10.x in a venv if the system meson is 1.11+.
 # 3. Clones or updates the DXMT fork at $DXMT_SRC.
 # 4. Builds an x86_64 LLVM 15 static library tree at $LLVM_PREFIX
 #    (first run takes ~30 minutes).
@@ -97,13 +97,19 @@ if [[ -x "$MESON" ]]; then
     # DXMT's meson.build is incompatible with meson 1.11+.
     if (( _meson_maj > 1 || ( _meson_maj == 1 && _meson_min >= 11 ) )); then
         log_warn "meson ${_meson_maj}.${_meson_min} is too new for DXMT (need 1.10.x)."
-        log_warn "Pinning to meson==1.10.1 via pip --user."
-        python3 -m pip install --user 'meson==1.10.1' --quiet
-
-        # Derive the user-base bin directory at runtime so it works on
-        # any Python 3 minor version.
-        _user_base=$(python3 -m site --user-base)
-        MESON="$_user_base/bin/meson"
+        # Homebrew Python refuses `pip install --user` (PEP 668), so pin
+        # meson in a private venv. It sits beside $DXMT_SRC, not inside it,
+        # because step 3 only clones into a directory that does not exist.
+        _meson_venv="${MESON_VENV:-$(dirname "$DXMT_SRC")/meson-1.10.1-venv}"
+        log_warn "Pinning to meson==1.10.1 in $_meson_venv."
+        if [[ ! -x "$_meson_venv/bin/meson" ]]; then
+            mkdir -p "$(dirname "$_meson_venv")"
+            python3 -m venv "$_meson_venv" \
+                || die "Failed to create venv at $_meson_venv"
+            "$_meson_venv/bin/python" -m pip install 'meson==1.10.1' --quiet \
+                || die "pip failed to install meson==1.10.1 into $_meson_venv"
+        fi
+        MESON="$_meson_venv/bin/meson"
         export MESON
 
         if [[ ! -x "$MESON" ]]; then
