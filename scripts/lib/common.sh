@@ -63,6 +63,9 @@ die() {
 export HOMEBREW_PREFIX
 export PATH="$HOMEBREW_PREFIX/bin:$PATH"
 
+# Parallel compile jobs for steps 07 and 08. LLVM release jobs take ~1 GB RAM
+# each, so stay below the core count on 16-24 GB machines.
+: "${BUILD_JOBS:=6}"
 : "${WINE_APP_TARBALL_URL:=https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.0_1/wine-stable-11.0_1-osx64.tar.xz}"
 # Homebrew disabled the wine-stable cask on 2026-09-01 (Gatekeeper check), so
 # Wine may also live in ~/Applications, installed from the Gcenx tarball.
