@@ -10,7 +10,7 @@
 # -------------------------------------------------
 # 1. Installs missing Homebrew packages (meson, ninja, bison, flex,
 #    cmake, gettext, mingw-w64, wget).
-# 2. Pins meson to 1.10.x in a venv if the system meson is 1.11+.
+# 2. Pins meson to 1.10.2 in a venv unless the system meson is 1.10.x, x >= 2.
 # 3. Clones or updates the DXMT fork at $DXMT_SRC.
 # 4. Builds an x86_64 LLVM 15 static library tree at $LLVM_PREFIX
 #    (first run takes ~30 minutes).
@@ -74,7 +74,7 @@ for _pkg in meson ninja bison flex cmake gettext mingw-w64 wget; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 2 — Pin meson to 1.10.x if the system version is 1.11+
+# Step 2 — Pin meson to 1.10.2 unless the system meson is 1.10.2+ (1.10.x)
 # ---------------------------------------------------------------------------
 
 log_step "Step 2: meson version check"
@@ -82,21 +82,23 @@ log_step "Step 2: meson version check"
 # Default: use whatever brew installed.
 MESON="${MESON:-$HOMEBREW_PREFIX/bin/meson}"
 
-_meson_major_minor() {
-    # Prints "MAJOR.MINOR" as two integers separated by space: "1 10"
+_meson_version() {
+    # Prints "MAJOR MINOR PATCH" as three integers: "1 10 2"
     "$1" --version 2>/dev/null \
         | head -n1 \
         | sed 's/^[^0-9]*//' \
-        | awk -F. '{print $1, $2}'
+        | awk -F'[.+-]' '{print $1+0, $2+0, $3+0}'
 }
 
 if [[ -x "$MESON" ]]; then
-    read -r _meson_maj _meson_min <<< "$(_meson_major_minor "$MESON")"
-    log_info "System meson version: ${_meson_maj}.${_meson_min}"
+    read -r _meson_maj _meson_min _meson_pat <<< "$(_meson_version "$MESON")"
+    log_info "System meson version: ${_meson_maj}.${_meson_min}.${_meson_pat}"
 
-    # DXMT's meson.build is incompatible with meson 1.11+.
-    if (( _meson_maj > 1 || ( _meson_maj == 1 && _meson_min >= 11 ) )); then
-        log_warn "meson ${_meson_maj}.${_meson_min} is too new for DXMT (need 1.10.x)."
+    # DXMT's meson.build is incompatible with meson 1.11+, and 1.10.0/1.10.1
+    # crash with `KeyError ... build.cpp_importstd` (fixed in 1.10.2). Only
+    # 1.10.x with patch >= 2 is usable as is.
+    if ! (( _meson_maj == 1 && _meson_min == 10 && _meson_pat >= 2 )); then
+        log_warn "meson ${_meson_maj}.${_meson_min}.${_meson_pat} is not usable for DXMT (need 1.10.2+, below 1.11)."
         # Homebrew Python refuses `pip install --user` (PEP 668), so pin
         # meson in a private venv. It sits beside $DXMT_SRC, not inside it,
         # because step 3 only clones into a directory that does not exist.
@@ -115,10 +117,10 @@ if [[ -x "$MESON" ]]; then
         if [[ ! -x "$MESON" ]]; then
             die "pip installed meson==1.10.2 but $MESON is not executable."
         fi
-        read -r _new_maj _new_min <<< "$(_meson_major_minor "$MESON")"
-        log_ok "Using pinned meson ${_new_maj}.${_new_min} at $MESON"
+        read -r _new_maj _new_min _new_pat <<< "$(_meson_version "$MESON")"
+        log_ok "Using pinned meson ${_new_maj}.${_new_min}.${_new_pat} at $MESON"
     else
-        log_ok "meson ${_meson_maj}.${_meson_min} is compatible — no pin needed"
+        log_ok "meson ${_meson_maj}.${_meson_min}.${_meson_pat} is compatible — no pin needed"
         export MESON
     fi
 else
