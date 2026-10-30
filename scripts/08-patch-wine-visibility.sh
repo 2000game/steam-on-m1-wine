@@ -110,9 +110,12 @@ if (( _SKIP_TO_COPY == 0 )); then
             # Newer Xcode clang keeps targeting arm64 even under
             # `arch -x86_64`; configure then adds -D__x86_64__ and the SDK
             # pulls in both the arm and i386 headers. Pass -arch explicitly.
+            # Real x86_64 builds can't link Homebrew's arm64 freetype; only
+            # winemac.so is installed from this tree, so fonts don't matter.
             arch -x86_64 ../configure \
                 --enable-win64 \
                 --disable-tests \
+                --without-freetype \
                 CC='clang -arch x86_64' \
                 CXX='clang++ -arch x86_64' \
                 OBJC='clang -arch x86_64' \
