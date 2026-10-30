@@ -228,15 +228,20 @@ else
     fi
 
     log_info "Extracting Wine toolchain"
-    tar -xzf "$_wine_tarball" -C "$_tc_parent"
-
-    # The tarball may extract to a versioned directory (e.g. wine-8.16-3shain).
-    # Normalise it to the expected name.
-    _extracted=$(find "$_tc_parent" -mindepth 1 -maxdepth 1 -type d -name 'wine-*' | head -n1)
-    if [[ -n "$_extracted" && "$_extracted" != "$WINE_TOOLCHAIN" ]]; then
-        mv "$_extracted" "$WINE_TOOLCHAIN"
-        log_ok "Renamed $(basename "$_extracted") -> wine"
+    # The 3Shain tarball has no top-level directory (./bin, ./lib, ...), so
+    # extract into a scratch dir and move it, or a single versioned
+    # directory inside it (e.g. wine-8.16-3shain), into place.
+    _tc_tmp="$_tc_parent/wine.extract"
+    rm -rf "$_tc_tmp"
+    mkdir -p "$_tc_tmp"
+    tar -xzf "$_wine_tarball" -C "$_tc_tmp"
+    _extracted="$_tc_tmp"
+    if [[ ! -d "$_tc_tmp/bin" ]]; then
+        _extracted=$(find "$_tc_tmp" -mindepth 1 -maxdepth 1 -type d | head -n1)
     fi
+    rm -rf "$WINE_TOOLCHAIN"
+    mv "$_extracted" "$WINE_TOOLCHAIN"
+    rm -rf "$_tc_tmp"
 
     [[ -x "$WINE_TOOLCHAIN/bin/winebuild" ]] \
         || die "Wine toolchain extracted but winebuild not found at $WINE_TOOLCHAIN/bin/winebuild."
