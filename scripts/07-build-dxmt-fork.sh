@@ -100,20 +100,20 @@ if [[ -x "$MESON" ]]; then
         # Homebrew Python refuses `pip install --user` (PEP 668), so pin
         # meson in a private venv. It sits beside $DXMT_SRC, not inside it,
         # because step 3 only clones into a directory that does not exist.
-        _meson_venv="${MESON_VENV:-$(dirname "$DXMT_SRC")/meson-1.10.1-venv}"
-        log_warn "Pinning to meson==1.10.1 in $_meson_venv."
+        _meson_venv="${MESON_VENV:-$(dirname "$DXMT_SRC")/meson-1.10.2-venv}"
+        log_warn "Pinning to meson==1.10.2 in $_meson_venv."
         if [[ ! -x "$_meson_venv/bin/meson" ]]; then
             mkdir -p "$(dirname "$_meson_venv")"
             python3 -m venv "$_meson_venv" \
                 || die "Failed to create venv at $_meson_venv"
-            "$_meson_venv/bin/python" -m pip install 'meson==1.10.1' --quiet \
-                || die "pip failed to install meson==1.10.1 into $_meson_venv"
+            "$_meson_venv/bin/python" -m pip install 'meson==1.10.2' --quiet \
+                || die "pip failed to install meson==1.10.2 into $_meson_venv"
         fi
         MESON="$_meson_venv/bin/meson"
         export MESON
 
         if [[ ! -x "$MESON" ]]; then
-            die "pip installed meson==1.10.1 but $MESON is not executable."
+            die "pip installed meson==1.10.2 but $MESON is not executable."
         fi
         read -r _new_maj _new_min <<< "$(_meson_major_minor "$MESON")"
         log_ok "Using pinned meson ${_new_maj}.${_new_min} at $MESON"
@@ -288,7 +288,9 @@ wine_rel=$(python3 -c \
     "$WINE_TOOLCHAIN" "$DXMT_SRC")
 
 # -- 64-bit build --
-if [[ ! -d "$DXMT_SRC/build" ]]; then
+if [[ ! -f "$DXMT_SRC/build/build.ninja" ]]; then
+    # A failed earlier setup leaves a half-configured dir behind.
+    rm -rf "$DXMT_SRC/build"
     log_info "meson setup build (64-bit)"
     arch -arm64 "$MESON" setup \
         --cross-file build-win64.txt \
@@ -300,7 +302,9 @@ log_info "meson compile build (64-bit)"
 arch -arm64 "$MESON" compile -C "$DXMT_SRC/build"
 
 # -- 32-bit build --
-if [[ ! -d "$DXMT_SRC/build32" ]]; then
+if [[ ! -f "$DXMT_SRC/build32/build.ninja" ]]; then
+    # A failed earlier setup leaves a half-configured dir behind.
+    rm -rf "$DXMT_SRC/build32"
     log_info "meson setup build32 (32-bit)"
     arch -arm64 "$MESON" setup \
         --cross-file build-win32.txt \
