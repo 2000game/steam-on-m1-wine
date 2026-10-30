@@ -107,9 +107,15 @@ if (( _SKIP_TO_COPY == 0 )); then
         log_info "Running configure (arch -x86_64 for mingw-w64 toolchain probing)"
         (
             cd "$WINE_BUILD_SRC/build"
+            # Newer Xcode clang keeps targeting arm64 even under
+            # `arch -x86_64`; configure then adds -D__x86_64__ and the SDK
+            # pulls in both the arm and i386 headers. Pass -arch explicitly.
             arch -x86_64 ../configure \
                 --enable-win64 \
                 --disable-tests \
+                CC='clang -arch x86_64' \
+                CXX='clang++ -arch x86_64' \
+                OBJC='clang -arch x86_64' \
                 CFLAGS='-fvisibility=default -O2 -Wno-error' \
                 CXXFLAGS='-fvisibility=default -O2 -Wno-error'
         ) || die "Wine configure failed"
