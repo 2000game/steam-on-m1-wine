@@ -73,6 +73,7 @@ core_steps=(
 d3d11_steps=(
     scripts/07-build-dxmt-fork.sh
     scripts/08-patch-wine-visibility.sh
+    scripts/11-mark-wine-as-game.sh
 )
 
 app_step=scripts/09-install-macos-app.sh

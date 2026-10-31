@@ -45,19 +45,49 @@ where the dimensions are auto-detected from the macOS Finder desktop
 bounds via `osascript`. Physical Retina resolution never reaches the
 game.
 
-**Fix.** Ensure you are launching via `scripts/launch-steam.sh`. The
-virtual desktop is active by default. Additional options:
+**Fix.** Since 2026-10-31 the virtual desktop is off by default (it
+blocks native macOS fullscreen). If this problem comes back, turn it on:
+
+- Size from the display:
+  ```bash
+  WINE_VIRTUAL_DESKTOP=auto bash scripts/launch-steam.sh --detach
+  ```
 
 - Override the desktop size:
   ```bash
   WINE_VIRTUAL_DESKTOP=1280x800 bash scripts/launch-steam.sh --detach
   ```
-- Opt out entirely (reverts to per-window NSWindow mode; note that
-  Wine virtual desktop windows lack a title bar, so macOS-side drag
-  is not available in non-virtual-desktop mode either):
-  ```bash
-  WINE_VIRTUAL_DESKTOP="" bash scripts/launch-steam.sh --detach
-  ```
+- Without the variable (default) Wine creates one macOS window per
+  Win32 window.
+
+## Unity 6 game: cursor visible, but mouse clicks do nothing
+
+**Symptom.** Keyboard works, the cursor moves, but the game ignores the
+mouse. `Player.log` contains `EnableMouseInPointer failed with the
+following error: Call not implemented.` Older Unity games work.
+
+**Cause.** Unity 6 switches to `WM_POINTER*` input and ignores
+`WM_MOUSEMOVE`/`WM_LBUTTONDOWN`. Wine before 11.3 stubs
+`EnableMouseInPointer` (Wine bug 53847).
+
+**Fix.** Use Gcenx Wine Devel ≥ 11.3 in `~/Applications/Wine Devel.app`
+(the scripts prefer it). Then `schwer bash scripts/08-patch-wine-visibility.sh`
+(builds winemac.so for `WINE_BUILD_BRANCH`, default wine-11.18) and copy
+DXMT's `d3d11/d3d10core/dxgi/winemetal.dll` and `winemetal.so` into the
+new Wine tree (`bash scripts/04-install-dxmt.sh` or step 07).
+
+## Game fullscreen covers the notch, no swipe between Spaces
+
+**Symptom.** The game fills the whole screen including the notch area;
+there is no red/yellow/green button and no swipe gesture.
+
+**Cause.** The game runs in borderless/exclusive fullscreen, or Steam
+runs inside the virtual desktop. winemac only offered native fullscreen
+to resizable windows; Unity windowed mode is fixed-size.
+
+**Fix.** Launch without virtual desktop (default), set the game to
+windowed mode, then press Ctrl+Cmd+F. Needs the winemac patch from
+`patches/wine/` (applied by step 08).
 
 ## "Failed to initialize graphics / DirectX 11" at game launch
 
@@ -108,7 +138,7 @@ reliably hangs the container.
 **Fix (disable virtual desktop).**
 1. Kill everything:
    ```bash
-   pkill -9 -f 'steam\.exe|steamwebhelper|wineserver|wine64-preloader|explorer\.exe'
+   pkill -9 -i -f 'steam\.exe|steamwebhelper|wineserver|wine64-preloader|explorer\.exe'
    ```
 2. Launch with virtual desktop disabled:
    ```bash
@@ -162,7 +192,7 @@ CEF's ANGLE back-end produces a black surface. Note: passing
   launch. If you invoked Steam some other way, kill everything and run
   `launch-steam.sh` again:
   ```bash
-  pkill -9 -f 'steam\.exe|steamwebhelper|wineserver'
+  pkill -9 -i -f 'steam\.exe|steamwebhelper|wineserver'
   scripts/launch-steam.sh
   ```
 
@@ -303,7 +333,7 @@ Re-run scripts/03-install-steam.sh to recover.
 **Fix.**
 1. Quit Steam completely, then:
    ```bash
-   pkill -9 -f 'steam\.exe|steamwebhelper|wineserver'
+   pkill -9 -i -f 'steam\.exe|steamwebhelper|wineserver'
    ```
 2. Remove the corrupted helper files from the affected directory:
    ```bash
@@ -355,4 +385,7 @@ symptoms and not (fully) fixed.
 | `FreeType 64-bit development files not found` | Homebrew's freetype is arm64 and cannot link into the x86_64 Wine build | `08` configures Wine with `--without-freetype` |
 | `06-install-wrapper.sh` can't find `bin/cef` on a fresh install | `SteamSetup` only installs the bootstrapper; CEF arrives on first launch | `06` now warns and exits 0; `launch-steam.sh` redeploys the wrapper on every launch |
 | DXMT log: `Failed to create metal view ... no exported symbols` | The patched `winemac.drv` from step 08 is not installed, so the window has no visible Metal view | Run `bash scripts/08-patch-wine-visibility.sh` (or the full `install.sh`) |
+| Menu runs at 30 FPS with the 60 FPS cap, gameplay at 60 | Upstream DXMT divided the game's `SyncInterval` by the cap instead of the refresh rate | `patches/dxmt/0002` (applied by `07`); re-run `07` and reinstall the DLLs |
+| `wine: could not load ntdll.so` after replacing `bin/wine` | Gcenx's `bin/wine` searches other paths than an upstream-built loader; games do not run as `bin/wine` anyway | Restore `bin/wine.gcenx-backup`. For Game Mode use `11-mark-wine-as-game.sh`, which edits `lib/wine/x86_64-unix/wine` in place |
+| `bench-game.sh`: game exits during warm-up | The Steam API restarts the game through Steam (with Steam's environment) when it was not launched by Steam | The script creates a temporary `steam_appid.txt`; check for a left-over one only if the script was killed |
 | 32-bit game crashes under WoW64 with `Exception frame is not in stack limits` | Known Wine WoW64 limitation with 32-bit processes | Not fixed; use a 64-bit build of the game if it offers one |

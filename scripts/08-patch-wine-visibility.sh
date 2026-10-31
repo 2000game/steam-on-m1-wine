@@ -20,10 +20,16 @@ require_wine_installed
 
 # -- Overridable paths --------------------------------------------------------
 
-: "${WINE_BUILD_SRC:=$HOME/dev/wine-build/wine}"
-: "${WINE_BUILD_BRANCH:=wine-11.0}"
+: "${WINE_BUILD_BRANCH:=wine-11.18}"
+: "${WINE_BUILD_SRC:=$HOME/dev/wine-build/$WINE_BUILD_BRANCH}"
 
 WINE_UNIX_DIR="$WINE_APP/Contents/Resources/wine/lib/wine/x86_64-unix"
+
+# Source fixes in patches/wine (e.g. native fullscreen for Unity windows).
+# The installed .so records a hash of them, so a new patch forces a rebuild.
+WINE_PATCH_DIR="$REPO_ROOT/patches/wine"
+patches_stamp=$(cat "$WINE_PATCH_DIR"/*.patch 2>/dev/null | shasum -a 256 | awk '{print $1}')
+stamp_file="$WINE_UNIX_DIR/winemac.so.patches"
 
 # -- Sentinel: already patched? -----------------------------------------------
 
@@ -37,17 +43,18 @@ installed_pub_count=$(nm -g "$installed_so" 2>/dev/null \
     | wc -l \
     | tr -d ' ')
 
-if (( installed_pub_count >= 100 )); then
+if (( installed_pub_count >= 100 )) && [[ "$(cat "$stamp_file" 2>/dev/null)" == "$patches_stamp" ]]; then
     log_ok "Already patched ($installed_pub_count public symbols in installed winemac.so). Nothing to do."
     exit 0
 fi
-log_info "Installed winemac.so has $installed_pub_count public symbols (need >= 100); proceeding."
+log_info "Installed winemac.so has $installed_pub_count public symbols (need >= 100) or predates patches/wine; proceeding."
 
 # -- Sentinel: built .so is newer than installed? -----------------------------
 
 built_so="$WINE_BUILD_SRC/build/dlls/winemac.drv/winemac.so"
 
-if [[ -f "$built_so" && "$built_so" -nt "$installed_so" ]]; then
+if [[ -f "$built_so" && "$built_so" -nt "$installed_so" \
+      && -z "$(find "$WINE_PATCH_DIR" -name '*.patch' -newer "$built_so" 2>/dev/null)" ]]; then
     log_ok "Built winemac.so ($built_so) is newer than installed; skipping to copy step."
     # Jump straight to the copy/verify section below by setting a flag.
     _SKIP_TO_COPY=1
@@ -96,6 +103,17 @@ if (( _SKIP_TO_COPY == 0 )); then
             || log_warn "Wine source tree has local changes; skipping ff-only merge"
         log_ok "Source up to date"
     fi
+
+    for _patch in "$WINE_PATCH_DIR"/*.patch; do
+        [[ -f "$_patch" ]] || continue
+        if git -C "$WINE_BUILD_SRC" apply --reverse --check "$_patch" 2>/dev/null; then
+            log_ok "Patch already applied: $(basename "$_patch")"
+        else
+            git -C "$WINE_BUILD_SRC" apply "$_patch" \
+                || die "Failed to apply $(basename "$_patch") to $WINE_BUILD_SRC"
+            log_ok "Applied patch: $(basename "$_patch")"
+        fi
+    done
 
     # -- Step 3: Configure ----------------------------------------------------
 
@@ -185,9 +203,12 @@ else
 fi
 
 log_info "Copying patched winemac.so into $WINE_UNIX_DIR"
+# Remove first so a running Wine keeps its mapped copy instead of crashing.
+$as_root rm -f "$installed_so"
 $as_root cp "$built_so" "$installed_so" \
     || die "Failed to copy patched winemac.so to $installed_so"
 log_ok "Installed patched winemac.so"
+echo "$patches_stamp" | $as_root tee "$stamp_file" >/dev/null
 
 # -- Step 7: Final verification -----------------------------------------------
 

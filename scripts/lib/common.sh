@@ -73,8 +73,12 @@ export PATH="$HOMEBREW_PREFIX/bin:$PATH"
 : "${WINE_APP_TARBALL_SHA256:=b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388}"
 # Homebrew disabled the wine-stable cask on 2026-09-01 (Gatekeeper check), so
 # Wine may also live in ~/Applications, installed from the Gcenx tarball.
+# Wine Devel (>= 11.3) is preferred when present: Unity 6 games need its
+# EnableMouseInPointer/WM_POINTER support, or the mouse does nothing.
 if [[ -z "${WINE_APP:-}" ]]; then
-    if [[ ! -d "/Applications/Wine Stable.app" && -d "$HOME/Applications/Wine Stable.app" ]]; then
+    if [[ -d "$HOME/Applications/Wine Devel.app" ]]; then
+        WINE_APP="$HOME/Applications/Wine Devel.app"
+    elif [[ ! -d "/Applications/Wine Stable.app" && -d "$HOME/Applications/Wine Stable.app" ]]; then
         WINE_APP="$HOME/Applications/Wine Stable.app"
     else
         WINE_APP="/Applications/Wine Stable.app"

@@ -230,6 +230,13 @@ export WINEDEBUG
 #     disabled override stops Wine from loading it at all.
 export WINEDLLOVERRIDES="dxgi,d3d11,d3d10core=n,b;bcrypt=b;ncrypt=b;gameoverlayrenderer,gameoverlayrenderer64=d"
 
+# DXMT frame cap. Without it, Unity games with vSync render at the panel's
+# 120 Hz, and every frame costs Rosetta + Wine + DXMT work nobody sees.
+# Override, e.g. DXMT_CONFIG="d3d11.preferredMaxFrameRate=0" for no cap.
+# DXMT_METALFX_SPATIAL_SWAPCHAIN=1 (upscaling) and MTL_HUD_ENABLED=1 (Metal
+# HUD with FPS) are passed through to the game when set.
+export DXMT_CONFIG="${DXMT_CONFIG:-d3d11.preferredMaxFrameRate=60}"
+
 # Steam flag set, validated on this hardware:
 #   -no-cef-sandbox       Chromium sandbox relies on Windows integrity
 #                         tokens Wine doesn't model. Must be disabled.
@@ -249,9 +256,15 @@ STEAM_ARGS=(
     -noverifyfiles
 )
 
-# Virtual-desktop wrapper.
+# Virtual-desktop wrapper (off by default since 2026-10-31).
 #
-# Without this, Wine's macdrv hands each Win32 top-level window straight
+# Default is now one macOS window per Win32 window: with the patched
+# winemac (patches/wine/0001-*) a game in windowed mode gets the green
+# button, so Ctrl+Cmd+F gives real macOS fullscreen (own Space, below the
+# notch, swipe gestures). Inside a virtual desktop that is impossible.
+# Set WINE_VIRTUAL_DESKTOP=auto to get the old wrapper back.
+#
+# Without the wrapper, Wine's macdrv hands each Win32 top-level window straight
 # to AppKit, so any game that asks for fullscreen takes over the whole
 # display. Wrapping Steam (and everything it spawns) inside a single
 # Wine `explorer.exe /desktop=NAME,WxH` virtual desktop collapses the
@@ -267,9 +280,9 @@ STEAM_ARGS=(
 #
 # Overrides:
 #   WINE_VIRTUAL_DESKTOP=1024x768   explicit resolution
-#   WINE_VIRTUAL_DESKTOP=auto       re-detect (same as unset)
-#   WINE_VIRTUAL_DESKTOP=""         opt out entirely (Wine creates
-#                                   per-window NSWindows again)
+#   WINE_VIRTUAL_DESKTOP=auto       size from the usable display
+#   WINE_VIRTUAL_DESKTOP="" / unset no wrapper (default; Wine creates
+#                                   per-window NSWindows)
 #
 # Scope: `/desktop=NAME` only applies to this explorer.exe and its
 # descendants, so unrelated Wine prefixes / apps are untouched.
@@ -294,7 +307,8 @@ detect_display_size() {
     echo "1440x900"
 }
 
-if [[ -z "${WINE_VIRTUAL_DESKTOP+x}" || "${WINE_VIRTUAL_DESKTOP:-}" == "auto" ]]; then
+WINE_VIRTUAL_DESKTOP="${WINE_VIRTUAL_DESKTOP:-}"
+if [[ "$WINE_VIRTUAL_DESKTOP" == "auto" ]]; then
     WINE_VIRTUAL_DESKTOP="$(detect_display_size)"
 fi
 
@@ -305,6 +319,7 @@ log_step "Launching Steam"
 log_info "Prefix           : $WINEPREFIX"
 log_info "Wine binary      : $WINE_BIN"
 log_info "WINEDLLOVERRIDES : $WINEDLLOVERRIDES"
+log_info "DXMT_CONFIG      : $DXMT_CONFIG"
 log_info "Steam flags      : ${STEAM_ARGS[*]}"
 if [[ -n "$WINE_VIRTUAL_DESKTOP" ]]; then
     log_info "Virtual desktop  : ${WINE_VIRTUAL_DESKTOP_NAME} @ ${WINE_VIRTUAL_DESKTOP}"

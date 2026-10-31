@@ -79,9 +79,14 @@ are not available off the shelf:
    longer exposes a usable NSView at swap-chain creation, and
    (b) wrapping macdrv's Metal helpers in Wine's own `OnMainThread`
    re-enters and deadlocks.
-4. **A virtual desktop wrapper** around Steam so the Wine session
-   runs inside a single, display-sized macOS window instead of
-   seizing the native fullscreen space.
+4. **Native macOS fullscreen** for games in windowed mode: a winemac
+   patch (`patches/wine/`) gives fixed-size game windows the green
+   button, so Ctrl+Cmd+F moves the game into its own Space below the
+   notch, with swipe gestures. The old virtual desktop wrapper is
+   still there via `WINE_VIRTUAL_DESKTOP=auto`.
+5. **Wine Devel (≥ 11.3)** for Unity 6 games: Wine 11.0 stubs
+   `EnableMouseInPointer`, so Unity 6 sees no mouse input. Scripts
+   prefer `~/Applications/Wine Devel.app` when it exists.
 
 Each fix is explained with code references in
 [`docs/dxmt-diagnosis.md`](docs/dxmt-diagnosis.md); upstream bug
@@ -132,23 +137,32 @@ Options` and paste:
 
 - `-force-d3d11-no-singlethreaded` — Unity creates the D3D11 device
   in multi-threaded mode. Retained defensively.
-- `-screen-fullscreen 0` — force windowed mode. The game draws inside
-  the Wine virtual desktop instead of grabbing macOS fullscreen.
+- `-screen-fullscreen 0` — force windowed mode. Then press Ctrl+Cmd+F
+  (or the green button) for real macOS fullscreen. Games that save their
+  own window mode (e.g. Moon Sweepers) need it set to "Windowed" in-game.
 
 ## Known limits
 
-- The Wine virtual desktop window is borderless by construction, so
-  **the window itself has no draggable title bar**. It is auto-sized
-  to your display on launch. Use Cmd+Tab / Mission Control to manage
-  focus.
+- A game set to borderless or exclusive fullscreen still covers the
+  whole display, notch included. Use windowed mode plus Ctrl+Cmd+F.
 - Heavy 3D titles probably will not run well: Steam UI is CPU-raster
   only (`--disable-gpu`), and DXMT's D3D11 coverage still has gaps.
   This repo targets 2D / idle / low-spec titles.
 - Steam Launch Options are per-user and stored in
   `localconfig.vdf`; the repo deliberately does not write to that
   file to avoid account-corruption risk.
-- Virtual desktop resolution follows the display at launch time.
-  Moving Steam to a different display requires a relaunch.
+- With `WINE_VIRTUAL_DESKTOP=auto`, the desktop resolution follows the
+  display at launch time; moving Steam to another display needs a relaunch.
+
+## Performance
+
+Every frame pays for Rosetta, Wine, DXMT and compositing, so the frame
+rate is the main lever. `launch-steam.sh` caps games at 60 FPS
+(`DXMT_CONFIG="d3d11.preferredMaxFrameRate=60"`, `=0` disables it).
+Native fullscreen (Ctrl+Cmd+F) costs WindowServer about half as much CPU as
+a window. `scripts/bench-game.sh` starts a game without input, measures
+frame pacing and CPU, and restores its save afterwards. Measurements and
+the remaining levers: [docs/performance.md](docs/performance.md).
 
 ## What gets installed
 
@@ -203,8 +217,11 @@ from the vendor the first time the corresponding script runs.
 │   ├── 08-patch-wine-visibility.sh  # Wine -fvisibility=default rebuild
 │   ├── 09-install-macos-app.sh      # Generate the Dock .app
 │   ├── 10-add-to-dock.sh            # Optional: pin to Dock
+│   ├── 11-mark-wine-as-game.sh      # Games category for macOS Game Mode
 │   ├── launch-steam.sh              # Manual launch
+│   ├── bench-game.sh                # Unattended frame/CPU benchmark
 │   ├── lib/common.sh                # Shared helpers
+│   ├── lib/set-loader-plist.py      # Edit the loader's embedded Info.plist
 │   ├── assets/                      # .reg fragments
 │   └── experimental/
 │       ├── 07-build-dxmt-from-fork.sh   # Dev-mode of 07 (manual prereqs)

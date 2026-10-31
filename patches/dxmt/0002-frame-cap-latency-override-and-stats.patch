@@ -1,0 +1,161 @@
+Frame cap fix, dxgi.maxFrameLatency override and DXMT_STATS_FILE
+
+- d3d11.preferredMaxFrameRate is now only a lower bound on frame time.
+  Before, SyncInterval was divided by the cap instead of the refresh rate,
+  so a game presenting with SyncInterval=2 at cap 60 got 30 FPS.
+- dxgi.maxFrameLatency=N fixes the CPU/GPU frame latency (PresentBoundary)
+  and ignores the game's SetMaximumFrameLatency. 0 (default) keeps it.
+- DXMT_STATS_FILE=<windows path> appends one line per 2 s with frame time
+  percentiles and DXMT's per-frame stats. Used by scripts/bench-game.sh.
+
+diff --git a/src/d3d11/d3d11_swapchain.cpp b/src/d3d11/d3d11_swapchain.cpp
+index 73c4203..f9a0e1f 100644
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -23,7 +23,11 @@
+ #include "dxmt_info.hpp"
+ #include "dxmt_presenter.hpp"
+ #include <atomic>
++#include <algorithm>
+ #include <cfloat>
++#include <cstdio>
++#include <share.h>
++#include <vector>
+ #include <format>
+ 
+ /**
+@@ -177,6 +181,21 @@ public:
+ 
+     handle_alt_tab_ = Config::getInstance().getOption<bool>("dxgi.handleAltTab", false);
+ 
++    if (int latency = Config::getInstance().getOption<int>("dxgi.maxFrameLatency", 0); latency > 0)
++      pDevice->GetDXMTDevice().queue().SetLatencyOverride(latency);
++
++    if (auto path = env::getEnvVar("DXMT_STATS_FILE"); !path.empty()) {
++      stats_file_ = _fsopen(path.c_str(), "a", _SH_DENYNO);
++      if (stats_file_) {
++        fprintf(stats_file_, "# swapchain %p %ux%u\n# t_s frames fps p50_ms p95_ms p99_ms max_ms boundary_ms "
++                             "prepare_ms flush_ms drawable_ms commit_ms sync_ms latency sync_interval\n",
++                (void *)this, desc_.Width, desc_.Height);
++        fflush(stats_file_);
++      } else {
++        WARN("DXMT_STATS_FILE: cannot open ", path);
++      }
++    }
++
+     hud.initialize(GetVersionDescriptionText(device_->GetDirectXVersion(), device_->GetFeatureLevel()));
+ 
+     backbuffer_desc_ = D3D11_TEXTURE2D_DESC1 {
+@@ -209,6 +228,8 @@ public:
+     WMT::ReleaseMetalView(native_view_);
+     native_view_ = {};
+     CloseHandle(present_semaphore_);
++    if (stats_file_)
++      fclose(stats_file_);
+   };
+ 
+   HRESULT
+@@ -759,10 +780,12 @@ public:
+       return hr;
+     }
+ 
++    // SyncInterval counts display refreshes; the preferred max frame rate is
++    // only a lower bound on frame time. Dividing SyncInterval by the cap would
++    // halve the frame rate of games that present with SyncInterval 2 on a
++    // 120 Hz display (60 FPS intended, 30 FPS shown with a cap of 60).
+     double vsync_duration =
+-        std::max(SyncInterval * 1.0 /
+-                     (preferred_max_frame_rate ? preferred_max_frame_rate
+-                                               : init_refresh_rate_),
++        std::max(SyncInterval * 1.0 / init_refresh_rate_,
+                  preferred_max_frame_rate ? 1.0 / preferred_max_frame_rate : 0);
+ 
+     auto &cmd_queue = device_->GetDXMTDevice().queue();
+@@ -805,11 +828,45 @@ public:
+ 
+     lock.unlock(); // since PresentBoundary() will and should only stall current thread
+ 
++    auto boundary_t0 = clock::now();
+     cmd_queue.PresentBoundary();
++    if (stats_file_)
++      LogStatistics(cmd_queue.statistics, boundary_t0, cmd_queue.GetMaxLatency(), SyncInterval);
+ 
+     return hr;
+   };
+ 
++  // One line per 2 s window, for benchmarking without the HUD (DXMT_STATS_FILE).
++  void LogStatistics(
++      const FrameStatisticsContainer &statistics, clock::time_point boundary_t0, uint32_t latency, UINT sync_interval
++  ) {
++    auto now = clock::now();
++    stats_boundary_ += now - boundary_t0;
++    if (stats_last_present_ != clock::time_point{})
++      stats_intervals_.push_back(std::chrono::duration<float, std::milli>(now - stats_last_present_).count());
++    else
++      stats_start_ = stats_window_ = now;
++    stats_last_present_ = now;
++    if (now - stats_window_ < std::chrono::seconds(2) || stats_intervals_.empty())
++      return;
++
++    auto &v = stats_intervals_;
++    std::sort(v.begin(), v.end());
++    auto pct = [&](double p) { return v[std::min(v.size() - 1, (size_t)(p * v.size()))]; };
++    double window_s = std::chrono::duration<double>(now - stats_window_).count();
++    auto ms = [](clock::duration d) { return d.count() / 1000000.0; };
++    auto &avg = statistics.average();
++    fprintf(stats_file_, "%.1f %zu %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %u %u\n",
++            std::chrono::duration<double>(now - stats_start_).count(), v.size(), v.size() / window_s,
++            pct(0.5), pct(0.95), pct(0.99), v.back(), ms(stats_boundary_) / v.size(),
++            ms(avg.encode_prepare_interval), ms(avg.encode_flush_interval), ms(avg.drawable_blocking_interval),
++            ms(avg.commit_interval), ms(avg.sync_interval), latency, sync_interval);
++    fflush(stats_file_);
++    v.clear();
++    stats_boundary_ = {};
++    stats_window_ = now;
++  }
++
+   void UpdateStatistics(const FrameStatisticsContainer& statistics, uint64_t frame_id) {
+     hud.begin();
+     auto &frame = statistics.at(frame_id - 1); // show the previous one frame statistics
+@@ -1073,6 +1130,10 @@ private:
+   DXGI_COLOR_SPACE_TYPE colorspace_ = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+   double init_refresh_rate_ = DBL_MAX;
+   int preferred_max_frame_rate = 0;
++  FILE *stats_file_ = nullptr;
++  std::vector<float> stats_intervals_;
++  clock::time_point stats_start_{}, stats_window_{}, stats_last_present_{};
++  clock::duration stats_boundary_{};
+   HUDState hud;
+   Rc<Presenter> presenter;
+   ModeSetGuard modeset_guard_;
+diff --git a/src/dxmt/dxmt_command_queue.hpp b/src/dxmt/dxmt_command_queue.hpp
+index add1117..c0ecd24 100644
+--- a/src/dxmt/dxmt_command_queue.hpp
++++ b/src/dxmt/dxmt_command_queue.hpp
+@@ -151,6 +151,7 @@ private:
+   uint64_t encoder_seq = 1;
+   uint64_t frame_count = 0;
+   uint32_t max_latency_ = 3;
++  uint32_t latency_override_ = 0;
+ 
+   dxmt::thread encodeThread;
+   dxmt::thread finishThread;
+@@ -253,7 +254,17 @@ public:
+ 
+   uint32_t GetMaxLatency() { return max_latency_; }
+ 
+-  void SetMaxLatency(uint32_t value) { max_latency_ = value; };
++  void SetMaxLatency(uint32_t value) {
++    if (!latency_override_)
++      max_latency_ = value;
++  };
++
++  // dxgi.maxFrameLatency: fixed value, the game's SetMaximumFrameLatency is ignored
++  void SetLatencyOverride(uint32_t value) {
++    latency_override_ = value;
++    if (value)
++      max_latency_ = value;
++  };
+ 
+   void
+   WaitCPUFence(uint64_t seq) {

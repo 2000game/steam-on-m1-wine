@@ -1,0 +1,20 @@
+winemac: allow native macOS fullscreen for titled, non-resizable windows
+
+Unity games in windowed mode use a fixed-size window (no WS_THICKFRAME), so
+winemac never set NSWindowCollectionBehaviorFullScreenPrimary and the green
+button stayed disabled. With this, the green button / Ctrl+Cmd+F moves the
+game into its own Space below the notch, and swipe gestures work.
+
+diff --git a/dlls/winemac.drv/cocoa_window.m b/dlls/winemac.drv/cocoa_window.m
+index b472334..2442f33 100644
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -1057,7 +1057,7 @@ - (void) adjustFullScreenBehavior:(NSWindowCollectionBehavior)behavior
+         NSUInteger style = [self styleMask];
+ 
+         if (behavior & NSWindowCollectionBehaviorParticipatesInCycle &&
+-            style & NSWindowStyleMaskResizable && !(style & NSWindowStyleMaskUtilityWindow) && !maximized &&
++            (style & (NSWindowStyleMaskResizable | NSWindowStyleMaskTitled)) && !(style & NSWindowStyleMaskUtilityWindow) && !maximized &&
+             !(self.parentWindow || self.latentParentWindow))
+         {
+             behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
