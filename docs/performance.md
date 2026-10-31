@@ -28,7 +28,7 @@ Rosetta JIT or runtime routines, without symbols.
 | Metal HUD | `MTL_HUD_ENABLED=1 bash scripts/launch-steam.sh --detach` shows FPS and GPU time in game. | works as env pass-through |
 | Steam window | Close or minimise Steam while playing. | not measured |
 | Frame latency | `dxgi.maxFrameLatency=N` in `DXMT_CONFIG` (patch `patches/dxmt/0002`). Fixes how many frames the CPU may run ahead of the GPU; the game's own request is ignored. | measured in menu: no gain, 1 costs CPU |
-| Game Mode | `scripts/11-mark-wine-as-game.sh` adds `LSApplicationCategoryType=public.app-category.games` to the loader's embedded Info.plist. Needs native fullscreen. | installed 2026-10-31, not yet verified |
+| Game Mode | `scripts/11-mark-wine-as-game.sh` runs every Windows process from `x86_64-unix/Wine Game.app` (games category). Needs native fullscreen (Ctrl+Cmd+F). | works, verified 2026-10-31 (HUD "Game Mode On", rocket icon in menu bar) |
 
 DXMT reads `DXMT_CONFIG` (entries separated by `;`) or a `dxmt.conf` file
 (`DXMT_CONFIG_FILE`). The cap sets the Metal present interval, so the CPU
@@ -198,15 +198,21 @@ Static read of ~/dev/wine-build/wine-11.18.
     `bin/wine` is a different loader (looks for `%s/wine%s/ntdll.so`, no plist
     section at all), the upstream one only finds `ntdll.so` in its own
     folder: "could not load ntdll.so". And it was the wrong binary anyway.
-  - Working: rewrite the plist in place in `lib/wine/x86_64-unix/wine`
-    (`scripts/lib/set-loader-plist.py`, without indentation, padded to the
-    old size) and re-sign ad hoc. With `LSSupportsGameMode` and
-    `GCSupportsGameMode` it does not fit (24 bytes too many); the category
-    alone is enough according to Apple. Wine runs normally with it.
-  - Not verifiable without a person: gamepolicyd logs nothing, `lsappinfo`
-    shows no category for unbundled processes, and Game Mode only starts in
-    fullscreen when frontmost. Check: Ctrl+Cmd+F in game, then the Game
-    Mode icon in the menu bar or "Game Mode" in the Metal HUD.
+  - Second attempt (no effect): add the category to the embedded plist in
+    place and re-sign. Wine ran fine, but Game Mode stayed off: macOS
+    registers an unbundled executable without bundle ID or category
+    (`lsappinfo` shows none), the embedded plist is not used for this.
+  - Working: a real bundle. `scripts/11-mark-wine-as-game.sh` moves the
+    original loader to `x86_64-unix/Wine Game.app/Contents/MacOS/wine`
+    (Info.plist with `LSApplicationCategoryType=public.app-category.games`,
+    `ntdll.so` symlinked next to it because the loader looks in its own
+    folder) and puts a small trampoline at the old path that `execv`s the
+    bundled loader. `lsappinfo` then shows `org.winehq.wine.game`, and in
+    native fullscreen the HUD says "Game Mode On". A symlink instead of the
+    trampoline does not work: macOS takes the bundle from the exec path,
+    and through a symlink that path is outside the bundle.
+  - Side effect: all Wine processes (also Steam) appear as "Wine Game" in
+    the menu bar; Game Mode only starts for the frontmost fullscreen one.
 - **Composited:** Wine windows start non-opaque with a clear background
   (`dlls/winemac.drv/cocoa_window.m:950-951`) and become opaque only in
   `checkTransparency` (`:1962-1978`). Check `[window isOpaque]` in

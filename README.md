@@ -160,7 +160,8 @@ Every frame pays for Rosetta, Wine, DXMT and compositing, so the frame
 rate is the main lever. `launch-steam.sh` caps games at 60 FPS
 (`DXMT_CONFIG="d3d11.preferredMaxFrameRate=60"`, `=0` disables it).
 Native fullscreen (Ctrl+Cmd+F) costs WindowServer about half as much CPU as
-a window. `scripts/bench-game.sh` starts a game without input, measures
+a window and turns on macOS Game Mode (`scripts/11-mark-wine-as-game.sh`).
+`scripts/bench-game.sh` starts a game without input, measures
 frame pacing and CPU, and restores its save afterwards. Measurements and
 the remaining levers: [docs/performance.md](docs/performance.md).
 
@@ -221,7 +222,6 @@ from the vendor the first time the corresponding script runs.
 │   ├── launch-steam.sh              # Manual launch
 │   ├── bench-game.sh                # Unattended frame/CPU benchmark
 │   ├── lib/common.sh                # Shared helpers
-│   ├── lib/set-loader-plist.py      # Edit the loader's embedded Info.plist
 │   ├── assets/                      # .reg fragments
 │   └── experimental/
 │       ├── 07-build-dxmt-from-fork.sh   # Dev-mode of 07 (manual prereqs)
