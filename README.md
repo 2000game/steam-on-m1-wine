@@ -167,6 +167,8 @@ the remaining levers: [docs/performance.md](docs/performance.md).
 
 D3D12 (e.g. Space Engineers 2) is experimental and not set up by the
 installer: results and the probe are in [docs/dx12.md](docs/dx12.md).
+Space Engineers 1 (D3D11) runs its menu with two native DLLs and
+`patches/dxmt/0003`: [docs/space-engineers.md](docs/space-engineers.md).
 
 ## What gets installed
 

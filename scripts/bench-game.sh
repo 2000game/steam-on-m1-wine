@@ -25,6 +25,7 @@
 #   WARMUP         seconds before measuring (default 40: load + shader cache)
 #   DURATION       seconds measured         (default 30)
 #   BENCH_DIR      output folder (default ~/.cache/steam-on-m1-wine/bench)
+#   EXTRA_OVERRIDES  added to WINEDLLOVERRIDES, e.g. d3dcompiler_47=n
 
 # shellcheck source=lib/common.sh
 source "$(dirname "$0")/lib/common.sh"
@@ -69,10 +70,31 @@ rsync -a "$GAME_SAVE_DIR/" "$run_dir/save/"
 manifest "$run_dir/reg-before.reg" > "$run_dir/manifest-before"
 log_ok "Snapshot in $run_dir/save"
 
+# -- Check the save ------------------------------------------------------------
+
+# Runs after every stop, also when the script dies mid-run.
+check_save() {
+    manifest "$run_dir/reg-after.reg" > "$run_dir/manifest-after"
+    if cmp -s "$run_dir/manifest-before" "$run_dir/manifest-after"; then
+        log_ok "Save unchanged"
+        save_state=unchanged
+    else
+        log_warn "Save changed during the run; restoring snapshot"
+        diff "$run_dir/manifest-before" "$run_dir/manifest-after" >&2 || true
+        # Keep what the game wrote (its logs often live in the save folder).
+        rsync -a "$GAME_SAVE_DIR/" "$run_dir/save-after/"
+        rsync -a --delete --exclude 'Player*.log' --exclude 'Crash reports' "$run_dir/save/" "$GAME_SAVE_DIR/"
+        if [[ -f "$run_dir/reg-before.reg" ]]; then
+            wine_run reg import "Z:${run_dir//\//\\}\\reg-before.reg" >/dev/null 2>&1 || log_warn "reg import failed"
+        fi
+        save_state=restored
+    fi
+}
+
 # -- Run -----------------------------------------------------------------------
 
 stats_file="$run_dir/dxmt-stats.txt"
-export WINEDLLOVERRIDES="dxgi,d3d11,d3d10core=n,b;bcrypt=b;ncrypt=b;gameoverlayrenderer,gameoverlayrenderer64=d"
+export WINEDLLOVERRIDES="dxgi,d3d11,d3d10core=n,b;bcrypt=b;ncrypt=b;gameoverlayrenderer,gameoverlayrenderer64=d${EXTRA_OVERRIDES:+;$EXTRA_OVERRIDES}"
 export DXMT_STATS_FILE="Z:${stats_file//\//\\}"
 
 # A sleeping display throttles presents; keep it awake while this script runs.
@@ -100,7 +122,7 @@ stop_game() {
     pkill -9 -i -f "$exe_pattern" 2>/dev/null || true
     if (( appid_created )); then rm -f "$appid_file"; fi
 }
-trap stop_game EXIT
+trap 'stop_game; check_save' EXIT
 
 pid=""
 for _ in $(seq 60); do
@@ -121,20 +143,7 @@ top -l "$samples" -s 3 -pid "$pid" -pid "$ws_pid" -stats pid,cpu,power > "$run_d
 
 stop_game
 trap - EXIT
-
-# -- Check the save ------------------------------------------------------------
-
-manifest "$run_dir/reg-after.reg" > "$run_dir/manifest-after"
-if cmp -s "$run_dir/manifest-before" "$run_dir/manifest-after"; then
-    log_ok "Save unchanged"
-    save_state=unchanged
-else
-    log_warn "Save changed during the run; restoring snapshot"
-    diff "$run_dir/manifest-before" "$run_dir/manifest-after" >&2 || true
-    rsync -a --delete --exclude 'Player*.log' --exclude 'Crash reports' "$run_dir/save/" "$GAME_SAVE_DIR/"
-    wine_run reg import "Z:${run_dir//\//\\}\\reg-before.reg" >/dev/null 2>&1 || log_warn "reg import failed"
-    save_state=restored
-fi
+check_save
 
 # -- Summary -------------------------------------------------------------------
 

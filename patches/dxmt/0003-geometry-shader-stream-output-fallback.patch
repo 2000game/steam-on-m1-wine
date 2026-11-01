@@ -1,0 +1,19 @@
+diff --git a/src/d3d11/d3d11_device.cpp b/src/d3d11/d3d11_device.cpp
+index 06e83d8..8c10b6d 100644
+--- a/src/d3d11/d3d11_device.cpp
++++ b/src/d3d11/d3d11_device.cpp
+@@ -283,9 +283,11 @@ public:
+       HRESULT hr = pipeline_cache_->AddStreamOutputLayout(
+           pShaderBytecode, NumEntries, pSODeclaration, NumStrides,
+           pBufferStrides, RasterizedStream, &so_layout);
+-      if (FAILED(hr))
+-        return hr;
+-      return so_layout->QueryInterface(IID_PPV_ARGS(ppGeometryShader));
++      if (SUCCEEDED(hr))
++        return so_layout->QueryInterface(IID_PPV_ARGS(ppGeometryShader));
++      // Only vertex shader stream output can be emulated. Fall back to a plain
++      // geometry shader so device creation goes on; its output is lost.
++      WARN("Stream output emulation failed, ignoring stream output");
+     }
+     ERR("CreateGeometryShaderWithStreamOutput: not supported, expect problem");
+     return pipeline_cache_->AddGeometryShader(pShaderBytecode, BytecodeLength,

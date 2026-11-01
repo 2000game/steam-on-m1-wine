@@ -53,6 +53,7 @@ Steam window open.
 | 2026-10-31 | Moon Sweepers | same, cap 30 (gameplay, outdoors) | ~44 | ~45 | ~11 |
 | 2026-10-31 | Moon Sweepers | cap 60, gameplay outdoors, default graphics (preset 2, shadows 3) | ~80 | ~81 | ~21 |
 | 2026-10-31 | Moon Sweepers | cap 60, gameplay outdoors, graphics lowered in game | ~71 | ~72 | ~26 |
+| 2026-11-01 | Space Engineers 1 (M4) | main menu, window, 120 FPS (cap not applied), see [space-engineers.md](space-engineers.md) | 53 | 63 | 9 |
 
 Metal HUD at cap 60 (1512x949, native fullscreen below the notch): FPS 59.75,
 GPU 13.8 ms per frame, presentation "Composited", Game Mode off. The GPU
