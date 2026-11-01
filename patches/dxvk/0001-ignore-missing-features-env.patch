@@ -1,0 +1,32 @@
+From: steam-on-m1-wine
+Subject: Optional: continue when the Vulkan device lacks required features
+
+DXVK v3.1.1 skips any Vulkan device that misses a "required" feature
+(KosmicKrisp on Metal lacks e.g. fillModeNonSolid), so dxgi.dll finds no
+adapter. With the env var DXVK_IGNORE_MISSING_FEATURES set, log a warning
+and go on. Only meant for using DXVK's dxgi as the swapchain provider of
+vkd3d-proton; D3D11 rendering through this DXVK is not expected to work.
+
+diff --git a/src/dxvk/dxvk_device_info.cpp b/src/dxvk/dxvk_device_info.cpp
+index 63d89d9..ecff38d 100644
+--- a/src/dxvk/dxvk_device_info.cpp
++++ b/src/dxvk/dxvk_device_info.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include <algorithm>
+ #include <iomanip>
+ #include <set>
+@@ -760,6 +761,13 @@ namespace dxvk {
+         if (f.extensionEnabled)
+           message += str::format(" (extension: ", f.extensionEnabled->extensionName, ")");
+ 
++        // Metal drivers lack some required features. Only warn, so that
++        // vkd3d-proton can use DXVK's dxgi for its swapchains.
++        if (std::getenv("DXVK_IGNORE_MISSING_FEATURES")) {
++          Logger::warn(message);
++          continue;
++        }
++
+         return message;
+       }
+     }

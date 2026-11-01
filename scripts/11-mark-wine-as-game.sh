@@ -40,7 +40,7 @@ fi
 
 # codesign changes the copied loader, so compare the inputs via a stamp.
 stamp_file="$unix_dir/wine.game-stamp"
-stamp=$(cat "$backup" "$plist_src" "$tramp_src" | shasum -a 256 | awk '{print $1}')
+stamp=$(cat "$backup" "$plist_src" "$tramp_src" "$0" | shasum -a 256 | awk '{print $1}')
 if [[ -d "$bundle" && "$(cat "$stamp_file" 2>/dev/null)" == "$stamp" ]] && grep -q "wine trampoline" "$loader"; then
     log_ok "Bundle and trampoline are current. Nothing to do."
     exit 0
@@ -53,6 +53,12 @@ mkdir -p "$work/Wine Game.app/Contents/MacOS"
 cp "$plist_src" "$work/Wine Game.app/Contents/Info.plist"
 cp -p "$backup" "$work/Wine Game.app/Contents/MacOS/wine"
 ln -s ../../../ntdll.so "$work/Wine Game.app/Contents/MacOS/ntdll.so"
+# The Vulkan loader looks for ICDs in the main bundle's Resources; without
+# this, Vulkan (and with it D3D12) finds no driver. Absolute library path,
+# because the loader resolves it relative to the manifest it found.
+mkdir -p "$work/Wine Game.app/Contents/Resources/vulkan/icd.d"
+sed "s|\"library_path\" *: *\"[^\"]*\"|\"library_path\": \"$WINE_APP/Contents/Resources/wine/lib/libMoltenVK.dylib\"|" \
+    "$unix_dir/vulkan/icd.d/MoltenVK_icd.json" > "$work/Wine Game.app/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
 codesign -f -s - "$work/Wine Game.app" 2>/dev/null || die "codesign of the bundle failed"
 
 clang -arch x86_64 -O2 -o "$work/wine" "$tramp_src" || die "Trampoline build failed"

@@ -165,6 +165,9 @@ a window and turns on macOS Game Mode (`scripts/11-mark-wine-as-game.sh`).
 frame pacing and CPU, and restores its save afterwards. Measurements and
 the remaining levers: [docs/performance.md](docs/performance.md).
 
+D3D12 (e.g. Space Engineers 2) is experimental and not set up by the
+installer: results and the probe are in [docs/dx12.md](docs/dx12.md).
+
 ## What gets installed
 
 | Component | Source | Role |
@@ -202,6 +205,7 @@ from the vendor the first time the corresponding script runs.
 │   ├── building-for-games.md        # Extra steps for D3D11 games
 │   ├── architecture.md              # How the pieces fit together
 │   ├── troubleshooting.md           # Symptoms → fixes
+│   ├── dx12.md                      # Experimental D3D12 results
 │   ├── references.md                # Upstream issues & commits
 │   ├── dxmt-diagnosis.md            # Full root-cause chronology
 │   ├── upstream-issue-draft.md      # Draft for 3Shain/dxmt

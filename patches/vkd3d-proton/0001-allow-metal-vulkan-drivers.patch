@@ -1,0 +1,33 @@
+From: steam-on-m1-wine
+Subject: Run on Metal-backed Vulkan (KosmicKrisp): no transform feedback, no single-texel alignment
+
+vkd3d-proton v3.1 refuses to create a device without transform feedback and
+single-texel buffer alignment. Metal has neither. Turn both into warnings:
+stream output stays unsupported, unaligned typed buffer views may misbehave.
+
+diff --git a/libs/vkd3d/device.c b/libs/vkd3d/device.c
+index 14ed4f8..927ceb3 100644
+--- a/libs/vkd3d/device.c
++++ b/libs/vkd3d/device.c
+@@ -2501,8 +2501,8 @@ static HRESULT vkd3d_init_device_caps(struct d3d12_device *device,
+ 
+     if (!physical_device_info->xfb_properties.transformFeedbackQueries)
+     {
+-        ERR("Lacking support for transform feedback.\n");
+-        return E_INVALIDARG;
++        /* Metal has no transform feedback; run without stream output. */
++        WARN("Lacking support for transform feedback, stream output disabled.\n");
+     }
+ 
+     single_storage_texel =
+@@ -2516,8 +2516,8 @@ static HRESULT vkd3d_init_device_caps(struct d3d12_device *device,
+ 
+     if (!single_storage_texel || !single_uniform_texel)
+     {
+-        ERR("Lacking support for single texel alignment.\n");
+-        return E_INVALIDARG;
++        /* Metal texel buffers need aligned offsets; unaligned typed views may misbehave. */
++        WARN("Lacking support for single texel alignment, continuing.\n");
+     }
+ 
+     /* Disable unused Vulkan features. The following features need to remain enabled
